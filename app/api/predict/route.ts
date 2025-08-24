@@ -1,36 +1,27 @@
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
+  const body = await req.json().catch(() => ({}));
+  const MODEL = process.env.MODEL_API_URL; // when ready, set to your FastAPI model endpoint
+
+  // If MODEL not set, return demo value
+  if (!MODEL) {
+    const land = Number(body?.land_size_ha ?? 0.5);
+    const demo = 1980 * Math.max(0.2, land); // simple demo calc
+    return NextResponse.json({ ok: true, predicted_kg: demo, note: 'Demo prediction (no public model URL)' });
+  }
+
   try {
-    const body = await req.json();
-
-    // If you have a public FastAPI URL, put it in NEXT_PUBLIC_MODEL_API or MODEL_API
-    const modelUrl =
-      process.env.MODEL_API || process.env.NEXT_PUBLIC_MODEL_API || "http://127.0.0.1:8000/api/ml/predict";
-
-    // In production, 127.0.0.1 is not reachable from Vercel. If you don’t have a public FastAPI,
-    // we return a deterministic demo value so the UI works for judges.
-    const isLocal = modelUrl.includes("127.0.0.1") || modelUrl.includes("localhost");
-
-    if (isLocal) {
-      const ha = Number(body?.land_size_ha ?? 0);
-      const month = Number(body?.month ?? 0);
-      const demo = Math.max(50, Math.round(ha * 1500 + (month % 3) * 120));
-      return NextResponse.json({ ok: true, predicted_kg: demo, note: "Demo prediction (no public model URL)" });
-    }
-
-    const r = await fetch(modelUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+    const r = await fetch(MODEL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      cache: 'no-store',
     });
-
-    if (!r.ok) {
-      return NextResponse.json({ ok: false, error: `Model ${r.status}` }, { status: 502 });
-    }
-    const data = await r.json();
-    return NextResponse.json(data);
+    const j = await r.json();
+    if (!r.ok) return NextResponse.json({ ok: false, error: j?.detail || 'Model error' }, { status: r.status });
+    return NextResponse.json(j);
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || String(e) }, { status: 500 });
+    return NextResponse.json({ ok: false, error: e?.message || 'Model fetch failed' }, { status: 502 });
   }
 }
